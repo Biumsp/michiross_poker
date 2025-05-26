@@ -2,6 +2,7 @@
 import random
 import itertools
 import pandas as pd
+from alive_progress import alive_bar
 
 # %%
 def generate_random_play(deck, n_players, min_cards = 1, max_cards = 5):
@@ -25,33 +26,35 @@ def find_combinations(play):
         "straight flush":   0,
     }
 
-    combs["one pair"]        = find_one_pair(play)
-    combs["two pairs"]       = find_two_pairs(play)
-    combs["three of a kind"] = find_three_of_a_kind(play)
+    play.sort(key = lambda x: x[0])
+
+    combs["one pair"]        = find_one_pair(play, is_sorted=True)
+    combs["two pairs"]       = find_two_pairs(play, is_sorted=True)
+    combs["three of a kind"] = find_three_of_a_kind(play, is_sorted=True)
+    combs["four of a kind"]  = find_four_of_a_kind(play, is_sorted=True)
+    combs["full house"]      = find_full_house(play, is_sorted=True)
     combs["straight"]        = find_straight(play)
     combs["flush"]           = find_flush(play)
-    combs["full house"]      = find_full_house(play)
-    combs["four of a kind"]  = find_four_of_a_kind(play)
     combs["straight flush"]  = find_straight_flush(play)
 
     return combs
 
 
-def find_one_pair(play):
+def find_one_pair(play, is_sorted=False):
 
-    play.sort(key = lambda x: x[0])
+    if not is_sorted: play.sort(key = lambda x: x[0])
     
-    for _, group in itertools.groupby(play, lambda x: x[0]): 
-        if len(list(group)) > 1: return 1
+    for i in range(1, len(play)):
+        if play[i-1][0] == play[i][0]: return 1
 
     return 0       
 
 
-def find_two_pairs(play):
+def find_two_pairs(play, is_sorted=False):
 
     if len(play) < 4: return 0
 
-    play.sort(key = lambda x: x[0])
+    if not is_sorted: play.sort(key = lambda x: x[0])
 
     pairs = 0
 
@@ -61,14 +64,44 @@ def find_two_pairs(play):
     return 1 if pairs > 1 else 0
 
 
-def find_three_of_a_kind(play):
+def find_three_of_a_kind(play, is_sorted=False):
 
     if len(play) < 3: return 0
 
-    play.sort(key = lambda x: x[0])
+    if not is_sorted: play.sort(key = lambda x: x[0])
 
-    for i in range(len(play)):
-        if play[i-2][0] == play[i-1][0] == play[i][0]: return 1
+    for i in range(2, len(play)):
+        if play[i-2][0] == play[i][0]: return 1
+
+    return 0
+
+
+def find_four_of_a_kind(play, is_sorted=False):
+
+    if len(play) < 4: return 0
+
+    if not is_sorted: play.sort(key = lambda x: x[0])
+    
+    for i in range(3, len(play)):
+        if play[i-3][0] == play[i][0]: return 1
+
+    return 0
+
+
+def find_full_house(play, is_sorted=False):
+
+    if len(play) < 5: return 0
+
+    if not is_sorted: play.sort(key = lambda x: x[0])
+
+    groups = []
+    
+    for _, group in itertools.groupby(play, lambda x: x[0]): 
+        groups.append(len(list(group)))
+
+    groups.sort(reverse=True)
+
+    if groups[0] > 2 and groups[1] > 1: return 1
 
     return 0
 
@@ -90,40 +123,10 @@ def find_flush(play):
 
     if len(play) < 5: return 0
 
-    play.sort(key = lambda x: x[0])
-
-    groups = []
-    
-    for _, group in itertools.groupby(play, lambda x: x[0]): 
-        groups.append(len(list(group)))
-
-    groups.sort(reverse=True)
-
-    if groups[0] > 2 and groups[1] > 1: return 1
-
-    return 0
-
-
-def find_full_house(play):
-
-    if len(play) < 5: return 0
-
     play.sort(key = lambda x: x[1])
 
     for _, group in itertools.groupby(play, lambda x: x[1]): 
         if len(list(group)) > 4: return 1
-
-    return 0
-
-
-def find_four_of_a_kind(play):
-
-    if len(play) < 4: return 0
-
-    play.sort(key = lambda x: x[0])
-    
-    for _, group in itertools.groupby(play, lambda x: x[0]): 
-        if len(list(group)) > 3: return 1
 
     return 0
 
@@ -146,7 +149,7 @@ suits = "HDCS"
 
 deck = [(v, s) for v in values for s in suits]
 
-hand_players = [2, 3, 4, 5, 6]
+active_players = [2, 3, 4, 5, 6]
 
 df = pd.DataFrame(columns=[
     "active_players",
@@ -161,22 +164,26 @@ df = pd.DataFrame(columns=[
     "straight flush"])
 
 # %%
-sample_size = 10000
+iterations_per_player = 5000
 
-for hp in hand_players:
+with alive_bar(sum(active_players)*iterations_per_player, force_tty = True) as bar:
+        
+    for i, ap in enumerate(active_players):
 
-    for _ in range(sample_size):
-        n_cards, n_players, play = generate_random_play(deck, hp)
-        results = find_combinations(play)
+        for _ in range(ap*iterations_per_player):
+            n_cards, n_players, play = generate_random_play(deck, ap)
+            results = find_combinations(play)
 
-        results.update({
-            "active_players": n_players,
-            "active_cards": n_cards,
-        })
+            results.update({
+                "active_players": n_players,
+                "active_cards": n_cards,
+            })
 
-        df.loc[len(df)] = results
+            df.loc[len(df)] = results
+
+            bar()
 
 # %%
-df.groupby("active_players").mean()
+df.groupby("active_players").mean().to_csv("results.csv")
 
 
